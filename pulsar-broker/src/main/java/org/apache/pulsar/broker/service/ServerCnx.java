@@ -1387,7 +1387,7 @@ public class ServerCnx extends PulsarHandler implements TransportCnx {
         CompletableFuture<Void> producerQueuedFuture = new CompletableFuture<>();
         Producer producer = new Producer(topic, ServerCnx.this, producerId, producerName,
                 getPrincipal(), isEncrypted, metadata, schemaVersion, epoch,
-                userProvidedProducerName, producerAccessMode, topicEpoch, supportsPartialProducer);
+                userProvidedProducerName, producerAccessMode, topicEpoch, supportsPartialProducer, this.service);
 
         topic.addProducer(producer, producerQueuedFuture).thenAccept(newTopicEpoch -> {
             if (isActive()) {

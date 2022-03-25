@@ -343,7 +343,7 @@ public class PulsarClusterMetadataSetup {
 
         if (!namespaceResources.namespaceExists(namespaceName)) {
             Policies policies = new Policies();
-            policies.bundles = getBundles(16);
+            policies.bundles = getBundles(64);
             policies.replication_clusters = Collections.singleton(cluster);
 
             namespaceResources.createPolicies(namespaceName, policies);

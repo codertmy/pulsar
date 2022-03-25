@@ -1281,6 +1281,12 @@ flexible messaging model and an intuitive client API.</description>
   <dependencies>
     <!-- These dependencies are common to all the submodules -->
     <dependency>
+      <groupId>com.lmax</groupId>
+      <artifactId>disruptor</artifactId>
+      <version>${disruptor.version}</version>
+    </dependency>
+
+    <dependency>
       <groupId>org.apache.pulsar</groupId>
       <artifactId>buildtools</artifactId>
       <version>${project.version}</version>

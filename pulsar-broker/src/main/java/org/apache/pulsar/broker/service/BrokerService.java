@@ -276,6 +276,7 @@ public class BrokerService implements Closeable {
 
     private Set<BrokerEntryMetadataInterceptor> brokerEntryMetadataInterceptors;
     private Set<ManagedLedgerPayloadProcessor> brokerEntryPayloadProcessors;
+    private volatile com.google.common.util.concurrent.RateLimiter rateLimiter;
 
     public BrokerService(PulsarService pulsar, EventLoopGroup eventLoopGroup) throws Exception {
         this.pulsar = pulsar;
@@ -2207,7 +2208,7 @@ public class BrokerService implements Closeable {
     }
 
     private void updateBrokerPublisherThrottlingMaxRate() {
-        int currentMaxMessageRate = pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate();
+        /*int currentMaxMessageRate = pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate();
         long currentMaxByteRate = pulsar.getConfiguration().getBrokerPublisherThrottlingMaxByteRate();
         int brokerTickMs = pulsar.getConfiguration().getBrokerPublisherThrottlingTickTimeMillis();
 
@@ -2231,7 +2232,20 @@ public class BrokerService implements Closeable {
             brokerPublishRateLimiter = new PublishRateLimiterImpl(publishRate);
         } else {
             brokerPublishRateLimiter.update(publishRate);
+        }*/
+        int currentMaxMessageRate = pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate();
+        log.info("BrokerService  getBrokerPublisherThrottlingMaxMessageRate: {}", pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate());
+        if (this.rateLimiter == null && currentMaxMessageRate > 0) {
+            this.rateLimiter = com.google.common.util.concurrent.RateLimiter.create(currentMaxMessageRate);
+        } else if (currentMaxMessageRate <= 0) {
+            this.rateLimiter = null;
+        } else {
+            this.rateLimiter.setRate(currentMaxMessageRate);
         }
+    }
+
+    public com.google.common.util.concurrent.RateLimiter getRateLimiter() {
+        return this.rateLimiter;
     }
 
     private void updateTopicMessageDispatchRate() {

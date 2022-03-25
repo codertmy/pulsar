@@ -94,13 +94,24 @@ public class Producer {
     private final SchemaVersion schemaVersion;
     private final String clientAddress; // IP address only, no port number included
     private final AtomicBoolean isDisconnecting = new AtomicBoolean(false);
+    private final BrokerService brokerService;
+
+    public Producer(Topic topic, TransportCnx cnx, long producerId, String producerName, String appId,
+                    boolean isEncrypted, Map<String, String> metadata, SchemaVersion schemaVersion, long epoch,
+                    boolean userProvidedProducerName,
+                    ProducerAccessMode accessMode,
+                    Optional<Long> topicEpoch,
+                    boolean supportsPartialProducer) {
+        this(topic, cnx, producerId, producerName, appId, isEncrypted, metadata, schemaVersion, epoch,
+                userProvidedProducerName, accessMode, topicEpoch, supportsPartialProducer, null);
+    }
 
     public Producer(Topic topic, TransportCnx cnx, long producerId, String producerName, String appId,
             boolean isEncrypted, Map<String, String> metadata, SchemaVersion schemaVersion, long epoch,
             boolean userProvidedProducerName,
             ProducerAccessMode accessMode,
             Optional<Long> topicEpoch,
-            boolean supportsPartialProducer) {
+            boolean supportsPartialProducer, BrokerService brokerService) {
         final ServiceConfiguration serviceConf =  cnx.getBrokerService().pulsar().getConfiguration();
 
         this.topic = topic;
@@ -151,6 +162,8 @@ public class Producer {
         this.topicEpoch = topicEpoch;
 
         this.clientAddress = cnx.clientSourceAddress();
+
+        this.brokerService = brokerService;
     }
 
     /**
@@ -234,6 +247,18 @@ public class Producer {
                 cnx.execute(() -> {
                     cnx.getCommandSender().sendSendError(producerId, sequenceId, ServerError.MetadataError,
                             "Messages must be encrypted");
+                    cnx.completedSendOperation(isNonPersistentTopic, headersAndPayload.readableBytes());
+                });
+                return false;
+            }
+        }
+
+        if (this.brokerService.getRateLimiter() != null) {
+            if (!this.brokerService.getRateLimiter().tryAcquire()) {
+                log.warn("publish try acquire failed, current rate:{}", this.brokerService.getRateLimiter().getRate());
+                cnx.execute(() -> {
+                    cnx.getCommandSender().sendSendError(producerId, sequenceId, ServerError.PersistenceError,
+                            "Producer is rate limited");
                     cnx.completedSendOperation(isNonPersistentTopic, headersAndPayload.readableBytes());
                 });
                 return false;
