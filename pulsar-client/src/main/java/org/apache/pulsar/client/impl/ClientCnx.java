@@ -679,7 +679,9 @@ public class ClientCnx extends PulsarHandler {
         case NotAllowedError:
             producers.get(producerId).recoverNotAllowedError(sequenceId);
             break;
-
+        case PersistenceError:
+            producers.get(producerId).connectionClosed(this);
+            break;
         default:
             // By default, for transient error, let the reconnection logic
             // to take place and re-establish the produce again
@@ -1047,7 +1049,7 @@ public class ClientCnx extends PulsarHandler {
     private void checkServerError(ServerError error, String errMsg) {
         if (ServerError.ServiceNotReady.equals(error)) {
             log.error("{} Close connection because received internal-server error {}", ctx.channel(), errMsg);
-            ctx.close();
+            //ctx.close();
         } else if (ServerError.TooManyRequests.equals(error)) {
             incrementRejectsAndMaybeClose();
         }
