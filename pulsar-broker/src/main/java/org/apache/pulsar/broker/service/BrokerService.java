@@ -148,7 +148,6 @@ import org.apache.pulsar.common.policies.data.OffloadPoliciesImpl;
 import org.apache.pulsar.common.policies.data.PersistencePolicies;
 import org.apache.pulsar.common.policies.data.PersistentOfflineTopicStats;
 import org.apache.pulsar.common.policies.data.Policies;
-import org.apache.pulsar.common.policies.data.PublishRate;
 import org.apache.pulsar.common.policies.data.RetentionPolicies;
 import org.apache.pulsar.common.policies.data.TopicPolicies;
 import org.apache.pulsar.common.policies.data.TopicType;
@@ -2234,7 +2233,8 @@ public class BrokerService implements Closeable {
             brokerPublishRateLimiter.update(publishRate);
         }*/
         int currentMaxMessageRate = pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate();
-        log.info("BrokerService  getBrokerPublisherThrottlingMaxMessageRate: {}", pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate());
+        log.info("BrokerService  getBrokerPublisherThrottlingMaxMessageRate: {}",
+                pulsar.getConfiguration().getBrokerPublisherThrottlingMaxMessageRate());
         if (this.rateLimiter == null && currentMaxMessageRate > 0) {
             this.rateLimiter = com.google.common.util.concurrent.RateLimiter.create(currentMaxMessageRate);
         } else if (currentMaxMessageRate <= 0) {
