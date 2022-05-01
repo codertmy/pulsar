@@ -63,11 +63,13 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Slf4j
 public class ZKMetadataStore extends AbstractBatchedMetadataStore
         implements MetadataStoreExtended, MetadataStoreLifecycle {
-
+    private static final Logger LOG = LoggerFactory.getLogger(ZKMetadataStore.class);
     public static final String ZK_SCHEME_IDENTIFIER = "zk:";
 
     private final String zkConnectString;
@@ -151,10 +153,14 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
     @Override
     protected void batchOperation(List<MetadataOp> ops) {
         try {
+            long start = System.currentTimeMillis();
+            LOG.info("ZK start batch op, size:{}, type:{}", ops.size(),ops.get(0).getType());
             zkc.multi(ops.stream().map(this::convertOp).collect(Collectors.toList()), (rc, path, ctx, results) -> {
+
                 if (results == null) {
                     Code code = Code.get(rc);
                     if (code == Code.CONNECTIONLOSS) {
+                        LOG.warn("ZK batch op, size:{}, type:{}, Conection loss,retry after 10ms, but turn to single", ops.size(), ops.get(0).getType());
                         // There is the chance that we caused a connection reset by sending or requesting a batch
                         // that passed the max ZK limit. Retry with the individual operations
                         executor.schedule(() -> {
@@ -162,12 +168,15 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
                         }, 100, TimeUnit.MILLISECONDS);
                     } else {
                         MetadataStoreException e = getException(code, path);
+                        LOG.warn("ZK batch op, size:" + ops.size() +", type:" + ops.get(0).getType() + ", zk op exception: {}", e);
                         ops.forEach(o -> o.getFuture().completeExceptionally(e));
                     }
                     return;
                 }
 
                 // Trigger all the futures in the batch
+                // Todo aync
+                LOG.info("ZK batch finish, size:{}, type:{}, batch op cost:{}ms", ops.size(), ops.get(0).getType(), System.currentTimeMillis() - start);
                 for (int i = 0; i < ops.size(); i++) {
                     OpResult opr = results.get(i);
                     MetadataOp op = ops.get(i);
