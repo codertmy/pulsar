@@ -27,10 +27,12 @@ import org.apache.pulsar.common.naming.NamespaceName;
 import org.apache.pulsar.common.naming.TopicDomain;
 import org.apache.pulsar.common.naming.TopicName;
 import org.apache.pulsar.metadata.api.MetadataStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class TopicResources {
     private static final String MANAGED_LEDGER_PATH = "/managed-ledgers";
-
+    private static final Logger LOG = LoggerFactory.getLogger(TopicResources.class);
     private final MetadataStore store;
 
     public TopicResources(MetadataStore store) {
@@ -39,7 +41,7 @@ public class TopicResources {
 
     public CompletableFuture<List<String>> listPersistentTopicsAsync(NamespaceName ns) {
         String path = MANAGED_LEDGER_PATH + "/" + ns + "/persistent";
-
+        LOG.info("Getting children from managed-ledgers now: {}", path);
         return store.getChildren(path).thenApply(children ->
                 children.stream().map(c -> TopicName.get(TopicDomain.persistent.toString(), ns, decode(c)).toString())
                         .collect(Collectors.toList())

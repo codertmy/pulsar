@@ -154,13 +154,13 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
     protected void batchOperation(List<MetadataOp> ops) {
         try {
             long start = System.currentTimeMillis();
-            LOG.info("ZK start batch op, size:{}, type:{}", ops.size(),ops.get(0).getType());
+            LOG.info("ZK start batch op, size:{}, type:{}, thread:{}", ops.size(),ops.get(0).getType(), Thread.currentThread().getName());
             zkc.multi(ops.stream().map(this::convertOp).collect(Collectors.toList()), (rc, path, ctx, results) -> {
 
                 if (results == null) {
                     Code code = Code.get(rc);
                     if (code == Code.CONNECTIONLOSS) {
-                        LOG.warn("ZK batch op, size:{}, type:{}, Conection loss,retry after 10ms, but turn to single", ops.size(), ops.get(0).getType());
+                        LOG.warn("ZK batch op, size:{}, type:{}, Conection loss,retry after 10ms, but turn to single, thread:{}", ops.size(), ops.get(0).getType(), Thread.currentThread().getName());
                         // There is the chance that we caused a connection reset by sending or requesting a batch
                         // that passed the max ZK limit. Retry with the individual operations
                         executor.schedule(() -> {
@@ -168,15 +168,15 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
                         }, 100, TimeUnit.MILLISECONDS);
                     } else {
                         MetadataStoreException e = getException(code, path);
-                        LOG.warn("ZK batch op, size:" + ops.size() +", type:" + ops.get(0).getType() + ", zk op exception: {}", e);
+                        LOG.warn("Thread" +Thread.currentThread().getName() + " ZK batch op, size:" + ops.size() +", type:" + ops.get(0).getType() + ", zk op exception: {}", e);
                         ops.forEach(o -> o.getFuture().completeExceptionally(e));
                     }
                     return;
                 }
 
                 // Trigger all the futures in the batch
-                // Todo aync
-                LOG.info("ZK batch finish, size:{}, type:{}, batch op cost:{}ms", ops.size(), ops.get(0).getType(), System.currentTimeMillis() - start);
+                long end = System.currentTimeMillis();
+                LOG.info("ZK batch finish, size:{}, type:{}, batch op cost:{}ms, thread: {}", ops.size(), ops.get(0).getType(), end - start, Thread.currentThread().getName());
                 for (int i = 0; i < ops.size(); i++) {
                     OpResult opr = results.get(i);
                     MetadataOp op = ops.get(i);
@@ -199,6 +199,7 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
                             op.getFuture().completeExceptionally(new MetadataStoreException(
                                     "Operation type not supported in multi: " + op.getType()));
                     }
+                    LOG.info("ZK batch process result finish, size:{}, type:{}, batch op cost:{}ms, thread:{}", ops.size(), ops.get(0).getType(), System.currentTimeMillis() - end, Thread.currentThread().getName());
                 }
             }, null);
         } catch (Throwable t) {
@@ -284,10 +285,12 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
     private Op convertOp(MetadataOp op) {
         switch (op.getType()) {
             case GET: {
+                //LOG.info("OP:GET of Batch, path:{}", op.asGet().getPath());
                 return Op.getData(op.asGet().getPath());
             }
             case PUT: {
                 OpPut p = op.asPut();
+                //LOG.info("OP:PUT of Batch, path:{}", p.getPath());
                 CreateMode createMode = getCreateMode(p.getOptions());
                 if (p.getOptExpectedVersion().isPresent() && p.getOptExpectedVersion().get() == -1L) {
                     // We are assuming a create operation
@@ -299,13 +302,15 @@ public class ZKMetadataStore extends AbstractBatchedMetadataStore
             }
             case DELETE: {
                 OpDelete d = op.asDelete();
+                //LOG.info("OP:DELETE of Batch, path:{}", d.getPath());
                 return Op.delete(d.getPath(), d.getOptExpectedVersion().orElse(-1L).intValue());
             }
             case GET_CHILDREN: {
+               //LOG.info("OP:GET CHILDREN of Batch, path:{}", op.asGetChildren().getPath());
                 return Op.getChildren(op.asGetChildren().getPath());
             }
-
             default:
+                //LOG.warn("OP:type is error, return null");
                 return null;
         }
     }

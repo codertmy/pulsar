@@ -372,7 +372,7 @@ public class NamespaceService implements AutoCloseable {
         if (LOG.isDebugEnabled()) {
             LOG.debug("findBrokerServiceUrl: {} - options: {}", bundle, options);
         }
-
+        LOG.info("findBrokerServiceUrl: {} - options: {}", bundle, options);
         ConcurrentOpenHashMap<NamespaceBundle, CompletableFuture<Optional<LookupResult>>> targetMap;
         if (options.isAuthoritative()) {
             targetMap = findingBundlesAuthoritative;
@@ -393,6 +393,7 @@ public class NamespaceService implements AutoCloseable {
                         future.complete(Optional.empty());
                     } else {
                         // Now, no one owns the namespace yet. Hence, we will try to dynamically assign it
+                        LOG.info("NO broker own this bundle:{}, so search candidateBroker", bundle);
                         pulsar.getExecutor().execute(() -> {
                             searchForCandidateBroker(bundle, future, options);
                         });
@@ -1188,6 +1189,7 @@ public class NamespaceService implements AutoCloseable {
     }
 
     public CompletableFuture<List<String>> getListOfPersistentTopics(NamespaceName namespaceName) {
+
         return pulsar.getPulsarResources().getTopicResources().listPersistentTopicsAsync(namespaceName);
     }
 

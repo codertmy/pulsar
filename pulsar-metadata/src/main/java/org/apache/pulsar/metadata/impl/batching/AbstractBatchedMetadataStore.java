@@ -27,22 +27,27 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
+
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pulsar.metadata.api.GetResult;
 import org.apache.pulsar.metadata.api.MetadataStoreConfig;
 import org.apache.pulsar.metadata.api.Stat;
 import org.apache.pulsar.metadata.api.extended.CreateOption;
 import org.apache.pulsar.metadata.impl.AbstractMetadataStore;
+import org.apache.pulsar.metadata.impl.ZKMetadataStore;
 import org.jctools.queues.MessagePassingQueue;
 import org.jctools.queues.MpscUnboundedArrayQueue;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Slf4j
 public abstract class AbstractBatchedMetadataStore extends AbstractMetadataStore {
-
+    private static final Logger LOG = LoggerFactory.getLogger(AbstractBatchedMetadataStore.class);
     private final ScheduledFuture<?> scheduledTask;
-    private final MessagePassingQueue<MetadataOp> readOps;
-    private final MessagePassingQueue<MetadataOp> writeOps;
-
+    private volatile MessagePassingQueue<MetadataOp> readOps;
+    private volatile MessagePassingQueue<MetadataOp> writeOps;
     private final AtomicBoolean flushInProgress = new AtomicBoolean(false);
 
     private final boolean enabled;
@@ -84,34 +89,55 @@ public abstract class AbstractBatchedMetadataStore extends AbstractMetadataStore
     }
 
     private void flush() {
-        while (!readOps.isEmpty()) {
-            List<MetadataOp> ops = new ArrayList<>();
-            readOps.drain(ops::add, maxOperations);
-            batchOperation(ops);
+        if (!readOps.isEmpty()) {
+            batchOperation(buildBatchReadOps());
         }
 
-        while (!writeOps.isEmpty()) {
-            int batchSize = 0;
-
-            List<MetadataOp> ops = new ArrayList<>();
-            for (int i = 0; i < maxOperations; i++) {
-                MetadataOp op = writeOps.peek();
-                if (op == null) {
-                    break;
-                }
-
-                if (i > 0 && (batchSize + op.size()) > maxSize) {
-                    // We have already reached the max size, so flush the current batch
-                    break;
-                }
-
-                batchSize += op.size();
-                ops.add(writeOps.poll());
-            }
-            batchOperation(ops);
+        if (!writeOps.isEmpty()) {
+            batchOperation(buildBatchWriteOps());
         }
 
         flushInProgress.set(false);
+    }
+
+    private void fullFlush() {
+        if (readOps.size() >= maxOperations) {
+            batchOperation(buildBatchReadOps());
+        }
+
+        if (writeOps.size() >= maxOperations) {
+            batchOperation(buildBatchWriteOps());
+        }
+        flushInProgress.set(false);
+    }
+
+    private List<MetadataOp> buildBatchReadOps() {
+        List<MetadataOp> ops = new ArrayList<>();
+        readOps.drain(ops::add, maxOperations);
+        log.info("success build read batch size:{}, after batch queue sise:{}", ops.size(), readOps.size());
+        return ops;
+    }
+
+    private List<MetadataOp> buildBatchWriteOps() {
+        int batchSize = 0;
+
+        List<MetadataOp> ops = new ArrayList<>();
+        for (int i = 0; i < maxOperations; i++) {
+            MetadataOp op = writeOps.peek();
+            if (op == null) {
+                break;
+            }
+
+            if (i > 0 && (batchSize + op.size()) > maxSize) {
+                // We have already reached the max size, so flush the current batch
+                break;
+            }
+
+            batchSize += op.size();
+            ops.add(writeOps.poll());
+        }
+        log.info("success build write batch size:{}, after batch queue sise:{}", ops.size(), writeOps.size());
+        return ops;
     }
 
     @Override
@@ -150,8 +176,11 @@ public abstract class AbstractBatchedMetadataStore extends AbstractMetadataStore
                 batchOperation(Collections.singletonList(op));
                 return;
             }
-            if (queue.size() > maxOperations && flushInProgress.compareAndSet(false, true)) {
-                executor.execute(this::flush);
+
+            log.info("zk op enqueue, type: {}, current queue size:{}", op.getType(), queue.size());
+            if (queue.size() >= maxOperations && flushInProgress.compareAndSet(false, true)) {
+                log.info("start batch because of max batch ops:{}, type: {}, current queue size:{}", maxOperations, op.getType(), queue.size());
+                executor.execute(this::fullFlush);
             }
         } else {
             batchOperation(Collections.singletonList(op));

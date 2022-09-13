@@ -1099,18 +1099,22 @@ public class PulsarService implements AutoCloseable, ShutdownService {
             for (String topic : getNamespaceService().getListOfPersistentTopics(nsName)
                     .get(config.getMetadataStoreOperationTimeoutSeconds(), TimeUnit.SECONDS)) {
                 try {
+                    LOG.info("ZK get bundle topics return, loading topic: {}", topic);
                     TopicName topicName = TopicName.get(topic);
                     if (bundle.includes(topicName) && !isTransactionSystemTopic(topicName)) {
                         CompletableFuture<Optional<Topic>> future = brokerService.getTopicIfExists(topic);
+                        LOG.info("get topic:{} from broker service", topic);
                         if (future != null) {
                             persistentTopics.add(future);
                         }
+                        LOG.info("Current persistentTopics contain {} topics", persistentTopics.size());
                     }
                 } catch (Throwable t) {
                     LOG.warn("Failed to preload topic {}", topic, t);
                 }
             }
 
+            long start = System.currentTimeMillis();
             if (!persistentTopics.isEmpty()) {
                 FutureUtil.waitForAll(persistentTopics).thenRun(() -> {
                     double topicLoadTimeSeconds = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - topicLoadStart)
@@ -1120,10 +1124,15 @@ public class PulsarService implements AutoCloseable, ShutdownService {
                             .count();
                     LOG.info("Loaded {} topics on {} -- time taken: {} seconds", numTopicsLoaded, bundle,
                             topicLoadTimeSeconds);
+                }).exceptionally(ex -> {
+                    LOG.warn("Loaded " + persistentTopics.size() + " topics on " + bundle + " in exception:", ex);
+                    return null;
                 });
             }
+            LOG.info("{} has create in broker, cost: {}ms", persistentTopics.size(), System.currentTimeMillis() - start);
             return null;
         });
+
     }
 
     // No need to synchronize since config is only init once
